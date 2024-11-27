@@ -105,52 +105,68 @@ public class Model extends Observable {
      * 3. When three adjacent tiles in the direction of motion have the same
      *    value, then the leading two tiles in the direction of motion merge,
      *    and the trailing tile does not.
+     *
+     * 首先，moveTileUpAsFarAsPossible函数考虑单一个方块的移动：
+     * 1. 只考虑一个方向，判断一个方块向上移动最远能到达的位置。
+     * 2. 该函数的布尔返回值记录是否发生了移动，用来判断后续是否需要修改changed值
+     * 3. 该函数在tiltColumn中被调用时，是按“从上到下”的顺序：when iterating over rows,
+     *    it is safe to iterate starting from row 3 down, since there’s no way a
+     *    tile will have to move again after moving once.
      * */
     public boolean moveTileUpAsFarAsPossible(int x, int y, boolean[] merged) {
         // TODO: Modify this.board (and perhaps this.score) to account
-        boolean moved = false;
-
         Tile currTile = board.tile(x, y);
         int myValue = currTile.value();
-        int targetY = y;
+        int targetY = y; // 最终向上移动的目标位置
 
         while (targetY + 1 < board.size()) {
             Tile nextTile = tile(x, targetY + 1);
             if (nextTile != null) {
                 if (nextTile.value() != myValue || merged[targetY + 1]) {
+                    // nextTile值不等，或值相等但已合并过，停止。
+                    // merged数组在进行列移动的函数tiltColumn中定义，记录该列各个方块的合并状态
+                    // 由于自上而下的顺序调用moveTileUpAsFarAsPossible，上一个方块的merged值已被记录
                     break;
                 }
             }
-            targetY++;
+            targetY++; // nextTile值为空，或值相等，前进
         }
 
+        // 如果目标位置发生改变，进行move操作
         if (targetY != y) {
+            // 调用move的同时记录该方块合并状态，move返回true已合并，false未合并
             merged[targetY] = board.move(x, targetY, currTile);
-            moved = true;
-            Tile mergeTile = tile(x, targetY);
             if (merged[targetY]) {
-                score += mergeTile.value();
+                score += myValue * 2; // 如果发生了合并，更新分数
             }
+            return true; // 移动了，返回true
         }
 
-        return moved;
+        // 目标位置未改变，无需调用move函数向上移动
+        return false; // 未进行移动，返回false
     }
 
-    public boolean tileColumn(int x) {
-        boolean[] merged = new boolean[board.size()];
+    /**
+     * 其次，tiltColumn考虑一列的移动
+     * 1. 学习了位或赋值运算符|=，只要有一个移动了，isChanged变为true。标记为board有更改，
+     *    后续因此改变changed值。
+     * 2. 在Java，new一个布尔数组时，所有元素默认初始化为false
+     */
+    public boolean tiltColumn(int x) {
+        boolean[] merged = new boolean[board.size()]; // 用数组记录该列各个方块的合并状态
         boolean isChanged = false;
 
         for (int y = size() - 1; y >= 0; y--) {
             if (board.tile(x, y) != null) {
-                boolean isMoved = moveTileUpAsFarAsPossible(x, y, merged);
-                if (isMoved) { // 只要有一个移动了，条件为真，标记为board有更改
-                    isChanged = true;
-                }
+                isChanged |= moveTileUpAsFarAsPossible(x, y, merged);
             }
         }
         return isChanged;
     }
 
+    /**
+     * 最后，tilt考虑整个board的移动
+     */
     public boolean tilt(Side side) {
         // for the tilt to the Side SIDE. If the board changed, set the
         // changed local variable to true.
@@ -159,10 +175,7 @@ public class Model extends Observable {
 
         board.setViewingPerspective(side);
         for (int x = 0; x < board.size(); x++) {
-            boolean columnChanged = tileColumn(x);
-            if (columnChanged) {
-                changed = true;
-            }
+                changed |= tiltColumn(x);
         }
 
         board.setViewingPerspective(Side.NORTH);
